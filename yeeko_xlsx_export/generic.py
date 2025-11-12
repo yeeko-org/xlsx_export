@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import io
 from rest_framework.response import Response
 from rest_framework import views, status
@@ -291,6 +290,7 @@ class FastBasicExport(GenericBasicExport):
 
 def export_xlsx(name="test.xlsx", data=None, in_memory=False):
     import xlsxwriter
+    import re
     output = None
     if in_memory:
         output = io.BytesIO()
@@ -331,13 +331,34 @@ def export_xlsx(name="test.xlsx", data=None, in_memory=False):
             col = 0
             for celda in linea:
                 if type(celda) in [str]:
+                    is_date_1 = bool(re.match(
+                        r"^\d{4}-\d{2}-\d{2}$", celda))
+                    is_date_2 = bool(re.match(
+                        r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(.\d+)?Z$",
+                        celda))
+                    if is_date_1 or is_date_2:
+                        from datetime import datetime
+                        date_format = workbook.add_format(
+                            { 'num_format': 'dd/mm/yyyy' })
+                        if is_date_1:
+                            date_value = datetime.strptime(celda, "%Y-%m-%d")
+                        else:
+                            date_value = datetime.strptime(
+                                celda, "%Y-%m-%dT%H:%M:%S.%fZ")
+                        worksheet.write_datetime(row, col, date_value, date_format)
+                        col += 1
+                        continue
+                    # check if is a date
                     if celda[0:1] == "=":
                         worksheet.write_formula(row, col, celda)
                         col += 1
                         continue
                 elif type(celda) in [float]:
-                    worksheet.write(row, col, float(("{:.%sf}" % max_decimal)
-                                                    .format(celda)))
+                    worksheet.write(
+                        row,
+                        col,
+                        float(("{:.%sf}" % max_decimal).format(celda))
+                    )
                     col += 1
                     continue
                 elif isinstance(celda, dict):
@@ -350,6 +371,19 @@ def export_xlsx(name="test.xlsx", data=None, in_memory=False):
                         worksheet.write(row, col, text)
                     col += 1
                     continue
+                elif isinstance(celda, list):
+                    text = ", ".join([u"%s" % c for c in celda if c])
+                    worksheet.write(row, col, text)
+                    col += 1
+                    continue
+                elif isinstance(celda, bool):
+                    worksheet.write(row, col, u"Sí" if celda else u"No")
+                    col += 1
+                    continue
+                # else:
+                #     print(type(celda))
+
+
                 worksheet.write(row, col, celda)
                 col += 1
             row += 1
